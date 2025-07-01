@@ -82,11 +82,11 @@ class TimeseriesAPI:
     def ensure_timeseries_exists(self, name: str) -> Dict[str, Any]:
         """Ensure a timeseries exists, creating it if necessary."""
         try:
-            # Try to get the timeseries
+            # Try to get the timeseries by name
             return self._make_request("GET", f"/timeseries_by_name/{name}")
         except TimeseriesAPIError as e:
             if "Not Found" in str(e):
-                # Timeseries doesn't exist, create it
+                # Timeseries doesn't exist, create it with just the name
                 logger.info(f"Creating new timeseries: {name}")
                 return self._make_request(
                     "POST",
@@ -112,9 +112,14 @@ class TimeseriesAPI:
         # Prepare datapoints in the expected format
         formatted_datapoints = []
         for dp in datapoints:
+            # Ensure timestamp has timezone information
+            timestamp = dp["timestamp"]
+            if not timestamp.endswith('Z') and not ('+' in timestamp or timestamp.endswith('Z')):
+                timestamp = f"{timestamp}Z"  # Assume UTC if no timezone specified
+                
             formatted_datapoints.append({
-                "timestamp": dp["timestamp"],
-                "value": dp["value"]
+                "timestamp": timestamp,
+                "value": float(dp["value"])  # Ensure value is a float
             })
         
         # Add datapoints to the timeseries (limit of 1000 per request)
@@ -131,7 +136,7 @@ def parse_test_results(test_results: str) -> Dict[str, Any]:
         test_results: JSON string containing test results
         
     Returns:
-        Dictionary containing test metrics
+        Dictionary containing test metrics with datapoints grouped by timeseries name
     """
     try:
         test_data = json.loads(test_results)
@@ -162,8 +167,8 @@ def parse_test_results(test_results: str) -> Dict[str, Any]:
             {"name": f"{repo}.tests.success_rate", "value": success_rate, "timestamp": timestamp},
             {"name": f"{repo}.tests.duration_seconds", "value": duration, "timestamp": timestamp},
             
-            # Context
-            {"name": f"{repo}.workflow", "value": 1, "timestamp": timestamp, "tags": {"workflow": workflow, "run_id": run_id}}
+            # Workflow context (as a separate timeseries)
+            {"name": f"{repo}.workflow", "value": 1, "timestamp": timestamp}
         ]
         
         return {

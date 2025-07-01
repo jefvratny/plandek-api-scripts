@@ -92,38 +92,99 @@ jobs:
 
 ## Data Format
 
-The following data is sent to the timeseries API:
+The script creates separate timeseries for each metric, with the following naming convention:
+- `{repository}.tests.total`
+- `{repository}.tests.passed`
+- `{repository}.tests.failed`
+- `{repository}.tests.skipped`
+- `{repository}.tests.success_rate`
+- `{repository}.tests.duration_seconds`
+- `{repository}.workflow`
+
+### API Usage
+
+The integration works as follows:
+
+1. **Timeseries Creation**:
+   - Each timeseries is created with just a name
+   - The API will automatically create the timeseries when the first datapoint is added
+
+2. **Datapoint Format**:
+   - Each datapoint must have a `timestamp` (ISO 8601 with timezone, e.g., `2023-01-01T12:00:00Z`)
+   - The `value` must be a number (integer or float)
+   - Multiple datapoints can be sent in a single API call (up to 1000 per request)
+
+### Example API Payloads
+
+For a repository named `owner/repo` and workflow `CI Tests`, the script will make separate API calls for each timeseries. Here are examples of the API requests:
+
+1. **Creating the timeseries (if it doesn't exist)**:
+   ```json
+   POST /timeseries
+   {
+     "name": "owner.repo.tests.total"
+   }
+   ```
+
+2. **Adding datapoints to the timeseries**:
+   ```json
+   POST /timeseries/{timeseries_id}/datapoints
+   [
+     {
+       "timestamp": "2023-01-01T12:00:00Z",
+       "value": 100
+     }
+   ]
+   ```
+
+3. **Workflow context (as a separate timeseries)**:
+   ```json
+   POST /timeseries
+   {
+     "name": "owner.repo.workflow"
+   }
+   
+   POST /timeseries/{workflow_timeseries_id}/datapoints
+   [
+     {
+       "timestamp": "2023-01-01T12:00:00Z",
+       "value": 1
+     }
+   ]
+   ```
+
+The script handles all of this automatically - you just need to provide the test results.
 
 ```json
-{
-  "timestamp": "2023-01-01T12:00:00Z",
-  "source": "github-actions",
-  "repository": "owner/repo",
-  "workflow": "CI",
-  "run_id": "1234567890",
-  "metrics": {
-    "tests_total": 100,
-    "tests_passed": 95,
-    "tests_failed": 5,
-    "tests_skipped": 0,
-    "success_rate": 95.0,
-    "duration_seconds": 120.5
+[
+  {
+    "timestamp": "2023-01-01T12:00:00Z",
+    "value": 100
   },
-  "metadata": {
-    "branch": "main",
-    "commit_sha": "abc123def456",
-    "run_attempt": "1"
+  {
+    "timestamp": "2023-01-01T12:00:00Z",
+    "value": 95
   }
-}
+]
 ```
+
+Each timeseries is identified by its name (e.g., `owner.repo.tests.passed`). You can add up to 1,000 datapoints to a timeseries in a single API call. The API will create the timeseries automatically if it doesn't exist.
+
+The script creates a separate timeseries named `{repository}.workflow` with a value of `1` to track workflow executions.
 
 ## Customization
 
-You can customize the following:
+You can customize the following aspects of the integration:
 
-1. **Test Results Path**: Update the `path` parameter in the workflow to match your test results location.
-2. **Additional Metadata**: Modify the `process_test_metrics.py` script to include additional context or metrics.
-3. **API Endpoint**: Override the default API endpoint using the `TIMESERIES_API_URL` variable.
+1. **Test Results Format**: The script expects test results in a specific JSON format. Modify the `parse_test_results` function in `process_test_metrics.py` to match your test runner's output format.
+
+2. **Timeseries Naming**: The default naming convention is `{repository}.{metric_name}`. You can modify the `parse_test_results` function to use a different naming scheme if needed.
+
+3. **API Configuration**: 
+   - Set `TIMESERIES_API_URL` to override the default API endpoint
+   - Set `TIMESERIES_API_KEY` to provide your authentication token
+
+4. **Workflow Triggers**: The GitHub Actions workflow can be triggered on different events by modifying the `on` section in the workflow file.
 
 ## Requirements
 
